@@ -1,0 +1,145 @@
+-- P
+-- Part 2 Question 1 - Lowest number of land neighbours
+WITH findborders AS(
+    SELECT name, count(name) AS num
+    FROM (SELECT name, code FROM country WHERE code NOT IN 
+        (SELECT country FROM politics WHERE dependent is NOT NULL)) AS Q              --- Removing countries that are not independent
+    INNER JOIN borders ON (q.code = borders.country1 OR q.code = borders.country2)    --- Sweden - Norway, Or Finland-Sweden 
+    GROUP BY (name)
+    ORDER BY num, name ASC
+)
+SELECT * FROM findborders WHERE num = (SELECT min(num) FROM findborders);
+
+---With dependent countries
+WITH findborders AS(
+    SELECT name, count(name) AS num
+    FROM (SELECT name, code FROM country) as Q
+    INNER JOIN borders ON (q.code = borders.country1 OR q.code = borders.country2)     
+    GROUP BY (name)
+    ORDER BY num, name ASC
+)
+SELECT * FROM findborders WHERE num = (SELECT min(num) FROM findborders);
+
+-- Part 2 Question 2 - Which language is most spoken? 
+SELECT language, numberspeaker FROM 
+  (SELECT language, FLOOR(SUM(country.Population * spoken.Percentage / 100)) AS numberspeaker -- join country with spoken to get population and percentage
+    FROM country INNER JOIN spoken ON country.code = spoken.country
+    GROUP BY (language) ) AS q
+WHERE numberspeaker is not NULL
+ORDER BY numberspeaker DESC;
+
+-- Part 2 Question 3 - Greatest contrast in wealth
+SELECT country1,economy1.gdp, country2, economy2.gdp, 
+(CASE
+    WHEN economy1.gdp > economy2.gdp THEN ROUND(CAST(economy1.gdp AS FLOAT)/CAST(economy2.gdp AS FLOAT)) -- 1 > 2
+    ELSE ROUND(cASt(economy2.gdp AS FLOAT)/cASt(economy1.gdp AS FLOAT)) -- 2 > 1
+END) AS gdpratio FROM borders 
+INNER JOIN economy AS economy1 ON country1=economy1.country 
+INNER JOIN economy AS economy2 ON country2=economy2.country
+WHERE economy1.gdp/economy2.gdp IS NOT NULL ORDER BY gdpratio DESC;
+
+
+-- P+ 1 - Cross 5 borders from Sweden
+WITH recursive findCrossing(code, name, numberOfCrossings) AS (
+  SELECT code,name,0,
+  CASE WHEN country1 = 'S' THEN country2 ELSE country1 END as neighbour
+            FROM Country JOIN borders ON Country.code = Borders.country1 OR Country.code = Borders.Country2
+  WHERE Country.code = 'S'
+  UNION ALL
+  SELECT newCountry.code, newCountry.name,numberOfCrossings+1, 
+      CASE WHEN newCountry.country1 = neighbour THEN newCountry.country2 ELSE newCountry.country1 END as neighbour --country1 or 2 is neighbour
+  FROM findCrossing JOIN(SELECT Country.code,country.name,country1,country2 
+      FROM Country JOIN borders ON Country.code = Borders.country1 OR Country.code = Borders.Country2) as newCountry
+  ON newCountry.code = findCrossing.neighbour WHERE numberOfCrossings < 5 
+)
+SELECT DISTINCT name,MIN(numberOfCrossings) as numberOfCrossings FROM findCrossing WHERE code != 'S' GROUP BY name ORDER by numberOfCrossings ASC;
+
+
+-- P+ 2
+--Consider a river system as a main river and all the tributary rivers that flow into it,
+--and their respective tributary rivers a.s.o. Present a table that shows the names of the
+--rivers of the longest branch(es) of each river system and the total length of each
+--shown branch, as well as the number of rivers in each and the rank of the number of
+--rivers in the branch. Start from the rivers the Nile, Amazon, Jangtse, Rhein, Donau
+--and Mississippi and explore from there.
+
+--- All rivers
+WITH recursive findRiver(name, river, length, orderOfRivers, seriesID) AS (
+  SELECT name,river, length,1,name FROM River
+  UNION ALL 
+  SELECT nextRiver.name,nextRiver.river,nextRiver.length,orderOfRivers+1,seriesID 
+  FROM findRiver JOIN(SELECT river.name,river.river,river.length FROM River) as nextRiver 
+  ON nextRiver.name = findRiver.river 
+)
+Select RANK() OVER (ORDER BY COUNT(orderOfRivers) DESC) AS rank, string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID order by rank ASC, totlength DESC;
+
+
+-- 5 wanted rivers
+WITH recursive findRiver(name, river, length, orderOfRivers, seriesID) AS (
+  SELECT name,river, length,1,name FROM River
+  UNION ALL 
+  SELECT nextRiver.name,nextRiver.river,nextRiver.length,orderOfRivers+1,seriesID 
+  FROM findRiver JOIN(SELECT river.name,river.river,river.length FROM River) as nextRiver 
+  ON nextRiver.name = findRiver.river 
+)
+SELECT * FROM (Select RANK() OVER (ORDER BY COUNT(orderOfRivers) DESC) AS rank, string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID order by rank ASC, totlength DESC) q WHERE path LIKE'Nile%' OR path LIKE 'Amazonas%' 
+     OR path LIKE 'Yangtze%' OR path LIKE 'Rhein%' OR path LIKE 'Donau%' OR path LIKE 'Mississippi%';
+-------------------
+
+--Ordered by rank
+WITH recursive findRiver(name, river, length, orderOfRivers, seriesID) AS (
+  SELECT name,river, length,1,name FROM River
+  UNION ALL 
+  SELECT nextRiver.name,nextRiver.river,nextRiver.length,orderOfRivers+1,seriesID 
+  FROM findRiver JOIN(SELECT river.name,river.river,river.length FROM River) as nextRiver 
+  ON nextRiver.name = findRiver.river 
+)
+SELECT RANK() OVER (ORDER BY numrivers DESC) as rank,path, numrivers,totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID) q WHERE path LIKE'Nile%' OR path LIKE 'Amazonas%' 
+     OR path LIKE 'Yangtze%' OR path LIKE 'Rhein%' OR path LIKE 'Donau%' OR path LIKE 'Mississippi%' GROUP by path,numrivers,totlength order by rank ASC, totlength DESC;
+
+-- Original answer
+WITH recursive findRiver(name, river, length, orderOfRivers, seriesID) AS (
+  SELECT name,river, length,1,name FROM River
+  UNION ALL 
+  SELECT nextRiver.name,nextRiver.river,nextRiver.length,orderOfRivers+1,seriesID
+  FROM findRiver JOIN(SELECT river.name,river.river,river.length FROM River) as nextRiver 
+  ON nextRiver.name = findRiver.river 
+)
+SELECT RANK() OVER (ORDER BY numrivers DESC) as rank,path,numrivers,totlength FROM
+((SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Nile%' order by rank ASC) s WHERE rank = 1) UNION (SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Amazonas%' order by rank ASC) s WHERE rank = 1) UNION (SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Donau%' order by rank ASC) s WHERE rank = 1) UNION (SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Yangtze%' order by rank ASC) s WHERE rank = 1) UNION (SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Rhein%' order by rank ASC) s WHERE rank = 1) UNION (SELECT path,numrivers,totlength FROM 
+    (SELECT RANK() OVER (ORDER BY numrivers DESC) AS rank,path, numrivers, totlength FROM (Select string_agg(findRiver.name, ' -> ' order by orderOfRivers DESC)  AS path, COUNT(orderOfRivers) AS numrivers
+     ,sum(findRiver.length) AS totlength from findRiver GROUP BY seriesID ) q WHERE path LIKE 'Mississippi%' order by rank ASC) s WHERE rank = 1)) as q
+     GROUP BY path,numrivers,totlength
+     ORDER BY rank ASC, totlength DESC
+     ;
+
+-- Best answer
+WITH f AS (
+ WITH RECURSIVE r AS (
+   SELECT name AS grp, 1 n, name,length,'---'::text AS river,ARRAY[name::text] AS path
+   FROM river
+   WHERE name IN ('Amazonas','Rhein','Mississippi','Donau','Yangtze','Nile')
+   UNION
+   SELECT r.grp, r.n+1, rr.name, r.length+rr.length, r.name, r.path || rr.name::text
+   FROM river rr,r WHERE rr.river = r.name
+ )
+ SELECT r.grp, r.n,r.name,r.length,r.river,array_to_string(path,'-')
+ path,array_upper(path,1) numrivers FROM r ORDER BY n
+)
+SELECT rank() OVER (ORDER BY numrivers) rank, path, numrivers, length totlength
+FROM f
+WHERE (numrivers,grp) IN (SELECT max(numrivers),grp FROM f GROUP BY grp)
+ORDER BY rank,length DESC;
